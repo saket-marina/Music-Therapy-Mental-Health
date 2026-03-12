@@ -1,0 +1,18 @@
+css: |
+      pre.sourceCode {
+        background-color: #2d2d2d !important;
+        color: #f8f8f2 !important;
+      }
+      
+      code.sourceCode {
+        background-color: #2d2d2d !important;
+        color: #f8f8f2 !important;
+      }
+      
+      code.sourceCode span {
+        color: #ffd966 !important;
+      }
+      .cell-output {
+        background-color: #ffffff;
+        color: #2c2c2c;
+      }

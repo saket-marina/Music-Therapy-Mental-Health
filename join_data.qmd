@@ -1,0 +1,345 @@
+---
+title: "Music Therapy & Mental Health"
+subtitle: "How Does Music Affect Stress & Anxiety? How Do Genres Differ?"
+author: "Saket Marina, Meher Madan, Bella Schmidt"
+date: today
+format: 
+  html:
+    theme: quartz
+    number-sections: true
+    embed-resources: true
+    css: join_data_styles.css
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    code-fold: true
+    fig-align: center
+execute:
+  warning: false
+  message: false
+  echo: true
+editor: visual
+---
+
+```{r, include=FALSE}
+library(dplyr)
+library(tidyverse)
+```
+
+# Dataset 1: Music & Mental Health Survey (MxMH) {#sec-dataset1}
+
+## Data Source
+
+**Citation:** Rasgaitis, C. (2022). *Music & Mental Health Survey Results* \[Data set\]. Kaggle. Retrieved from <https://www.kaggle.com/datasets/catherinerasgaitis/mxmh-survey-results>
+
+**Original collector:** Catherine Rasgaitis, an independent researcher and data enthusiast.
+
+## Data Meaning
+
+The MxMH dataset contains the connection between music listening behavior and self-reported mental health. Every row in the dataset corresponds to a survey participant, tracking both their music behavior and their own self-rated mental health. The dataset tracks which music streaming service the participants use, how many hours a day they spend listening to music, their favorite genre out of 16 possible options, and how often they listen to each of the 16 genres. It also tracks contextual music listening behavior such as whether they listen to music while working and whether they play an instrument. Most relevant to our research question, it tracks self-reported scores on a 0-10 scale for four mental health dimensions: anxiety, depression, insomnia, and OCD, as well as whether the participant believes music improves, worsens, or has no effect on their mental health. Taken together, these variables enable us to directly examine whether particular music behaviors and genre preferences are linked to lower or higher levels of self-reported anxiety and stress.
+
+## Data Observations
+
+```{r}
+setwd("downloads")
+# Loading Dataset
+dataset1 <- read.csv("mxmh_survey_results.csv")
+
+glimpse(dataset1)
+```
+
+```{r}
+dataset1 |>
+  select(`Fav.genre`, `Hours.per.day`, Anxiety, Depression, Insomnia, OCD,
+         `Music.effects`, `BPM`) |>
+  head(8)
+```
+
+The dataset has **`r nrow(dataset1)` rows** and **`r ncol(dataset1)` columns**.
+
+## Data Issues
+
+The most problematic data quality issue in the MxMH dataset is the BPM column, which has a large number of missing values as well as some obviously impossible data points, such as very large or zero values, which appear to be the result of many respondents either leaving the question blank or filling it in with nonsense values. Accordingly, we will not use BPM as a primary variable in our analysis. The Music.effects column has a few missing values that had to be changed to NAs before analysis. The four mental health score columns, Anxiety, Depression, Insomnia, and OCD, have very few missing values and are overall sound, although it is worth noting that all of the scores are completely self-reported and have not been verified by any kind of clinical evaluation, which is a necessary limitation of survey research on mental health. The data quality is adequate for our purposes, and the problems that do exist are largely confined to columns that we will not use or have already cleaned.
+
+------------------------------------------------------------------------
+
+# Dataset 2: Spotify Tracks Audio Features {#sec-dataset2}
+
+## Data Source
+
+**Citation:** Pandya, M. (2023). *Spotify Tracks Dataset* \[Data set\]. Hugging Face. Retrieved from <https://huggingface.co/datasets/maharshipandya/spotify-tracks-dataset>
+
+**Original data source:** Spotify Web API (<https://developer.spotify.com/documentation/web-api>), collected in 2023.
+
+## Data Meaning
+
+The Spotify Tracks Dataset on Hugging Face is a massive dataset of Spotify music tracks aggregated from the Spotify API, and it includes data for more than 114,000 tracks across about 125 genres, with each row being a unique track and various audio-related features and metadata such as the track’s ID, artists, album and track title, popularity score, duration, whether the lyrics are explicit, and various audio-related metrics like danceability, energy, loudness, acousticness, tempo, and genre label. Spotify dataset is relevant because it contains a very detailed set of descriptive and numerical features that could be applied to tasks such as genre classification, recommendation systems, or trend analysis, and could either be combined with your first dataset to add more features (such as popularity or audio-related features) or could be used as a point of comparison.
+
+## Data Join Key
+
+We joined the two data sets for music genre, using the "Fav.genre" column from the MxMH data set and the "track_genre" column from the Spotify data set. We standardized the genre name formatting in both data sets before merging. We did a left join from the MxMH data set so that all 736 survey respondents were retained, with "NAs" introduced for any respondent whose favorite genre did not match any genre in the Spotify data set.
+
+## Data Observations
+
+```{r}
+# Loading Dataset
+setwd("downloads")
+dataset2 <- read.csv("SpotifyGenreDataset.csv")
+
+glimpse(dataset2)
+```
+
+```{r}
+dataset2 |>
+  select(track_genre, danceability, energy, valence, tempo,
+         acousticness, instrumentalness, speechiness, popularity) |>
+  filter(track_genre %in% c("rock", "pop", "metal", "classical", "jazz")) |>
+  slice_sample(n = 10)
+```
+
+The dataset has **`r nrow(dataset2)` rows** and **`r ncol(dataset2)` columns**.
+
+## Data Issues
+
+There are some missing values in columns such as artist name, album name, and track name, although the audio feature columns that we use, such as valence, energy, and tempo, do not have any missing values. All numeric columns are within their expected ranges with no impossible values, and the effect of any rare duplicate tracks is negligible since we aggregate by genre mean. The biggest problem in data quality is the discrepancy in genre names between the two datasets, which caused some unmatched respondents after joining.
+
+# Data Join & Documentation {#sec-join}
+
+## Cleaning up the Data Before Join
+
+Before joining, we cleaned up the data to prepare. First we standardized the genre names in both datasets to lowercase with hyphens replacing spaces. For example, "Hip hop" becomes "hip-hop" and "R&B" becomes "r-n-b". Then we manually recoded known genre name differences between datasets. For example, the first dataset's "Rap" was recoded to the second dataset's "hip-hop" because no direct match was found. After that, we consolidated the second dataset by genre to compute mean audio features per genre, which condensed around 114,000 songs into one representative row per genre. We then filtered the first dataset to remove rows with missing "Fav.Genre" values before joining. Lastly we created a new "n_tracks" column to record how many Spotify tracks contributed to each genre's average.
+
+```{r}
+clean_dataset1 <- dataset1 |>
+  filter(!is.na(`Fav.genre`)) |>
+  mutate(genre_key = `Fav.genre` |>
+           tolower() |>
+           str_replace_all(" ", "-") |>
+           str_replace_all("&", "n") |>
+           str_replace_all("r-n-b", "r-n-b") |>
+           recode(
+             "hip-hop"    = "hip-hop",
+             "k-pop"      = "k-pop",
+             "r-n-b"      = "r-n-b",
+             "rap"        = "hip-hop",
+             "edm"        = "edm",
+             "folk"       = "folk",
+             "gospel"     = "gospel",
+             "latin"      = "latin",
+             "lofi"       = "lo-fi",
+             "metal"      = "metal",
+             "pop"        = "pop",
+             "r&b"        = "r-n-b",
+             "rock"       = "rock",
+             "classical"  = "classical",
+             "country"    = "country",
+             "jazz"       = "jazz",
+             "video-game-music" = "video-game-music"
+           ))
+
+clean_dataset2 <- dataset2 |>
+  group_by(track_genre) |>
+  summarise(
+    n_tracks           = n(),
+    mean_danceability  = mean(danceability,     na.rm = TRUE),
+    mean_energy        = mean(energy,           na.rm = TRUE),
+    mean_valence       = mean(valence,          na.rm = TRUE),
+    mean_tempo         = mean(tempo,            na.rm = TRUE),
+    mean_acousticness  = mean(acousticness,     na.rm = TRUE),
+    mean_instrumentalness = mean(instrumentalness, na.rm = TRUE),
+    mean_speechiness   = mean(speechiness,      na.rm = TRUE),
+    mean_loudness      = mean(loudness,         na.rm = TRUE),
+    mean_popularity    = mean(popularity,       na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+## Joining the Data
+
+We used a left join from the first dataset onto the summarized Spotify genre data in the second dataset. This preserves all MxMH survey respondents, adding NAs for any respondent whose genre could not be matched.
+
+```{r}
+combined <- clean_dataset1 |>
+  left_join(clean_dataset2,
+            by = c("genre_key" = "track_genre"))
+
+glimpse(combined)
+```
+
+**MxMH Survey Participants Matched to Spotify Genre Data:**
+
+```{r}
+combined |>
+  mutate(matched = !is.na(mean_valence)) |>
+  count(matched) |>
+  mutate(matched = ifelse(matched, "Matched (genre found in Spotify)", "Unmatched (genre not in Spotify)")) |>
+  rename(Status = matched, Respondents = n)
+```
+
+**Sample rows from joined dataset:**
+
+```{r}
+combined |>
+  select(`Fav.genre`, genre_key, Anxiety, Depression, mean_valence,
+         mean_energy, mean_tempo, mean_acousticness) |>
+  slice_sample(n = 10)
+```
+
+The joined dataset has **`r nrow(combined)` rows** and **`r ncol(combined)` columns**.
+
+## Data Documentation
+
+All audio feature variables described in the columns of this dataset have official documentation from the Spotify Web API (https://developer.spotify.com/documentation/web-api/reference/get-audio-features). The MxMH dataset also provides a column description on the Kaggle page where the dataset is presented (https://www.kaggle.com/datasets/catherinerasgaitis/mxmh-survey-results) . The most relevant columns for the purpose of this data analysis of the combined dataset are provided below.
+
+-   Column Name: Fav.genre Source: MxMH Type: Categorical Description: Respondents’ favorite music genre as self-reported
+
+-   Column Name: Hours.per.day Source: MxMH Type: Numeric Description: Respondents’ estimated hours per day spent listening to music
+
+-   Column Names \[individual columns grouped for explanation purposes\] : Anxiety, Depression, Insomnia, OCD Source: MxMH Type: Numeric (0-10) Description: Respondents’ self-reported level of \[Anxiety, Depression, Insomnia, OCD\] on a scale of 0 (none) – 10 (extreme)
+
+-   Column Name: Music.Effects Source: MxMH Type: Categorical Description: Whether music worsens, improves, or has no effect on mental health
+
+-   Column Name: mean_valence Source: Spotify Type: Numeric (0-10) Description: How positive a genre conveys to the respondent on a scale of 0(calm) – 1 (intense)
+
+-   Column Name: mean_tempo Source: Spotify Type: Numeric (BPM) Description: Mean tempo of the tracks within that genre, represented in beats per minute (BPM)
+
+-   Column Name: mean_energy Source: Spotify Type: Numeric (0-10) Description: Perceptual intensity and activity of the drama on a scale of 0 (calm) – 1 (intense)
+
+-   Column Name: mean_instrumentalness Source: Spotify Type: Numeric (0-1) Description: Whether the genre is instrumental or has lyrics on a scale of 0 (instrumental) – 1 (lyrics)
+
+The columns that have the most analytical meaning toward our research are Anxiety (the primary outcomes), Fav genre, the variable used for grouping, and mean_valence and mean_energy, the genre-level audio features. These four key variables help us analyze whether the acoustic aspects/features of a respondent’s favorite genre correlate with their self-reported anxiety level. 
+
+### Bias & Human Rights Statement
+
+The combined dataset is subject to limitations and biases that are worth noting. The MxMH survey was distributed primarily digitally on platforms such as Reddit or Discord, which can skew the sample toward certain demographics. Generally, this demographic could consist of a younger audience that is English-speaking and digitally active. This underrepresented the opposing populations of older age, less digitally savvy, and non-English speakers. This gap can cause doubts about the fairness and non-discrimination principle, as the results of the survey of the impact music has on anxiety may not be accurately generalized across larger populations.  Furthermore, since these platforms are based in user-made communities, the respondents may be more involved already with this topic than an average individual. The Spotify audio features provide much more structure and are produced by an algorithm whose internal workings are not publicly disclosed. This aligns with the transparency and explainability in the analysis we conducted. Additionally, the way Spotify organizes its genres tends to reflect Western-centric decisions, which could put non-Western musical features at risk of marginalization. Both of the datasets were collected with intentional demographic balancing or sample creation, which can compromise the promotion of human values as well. However, one benefit of the datasets includes how they are fully anonymous regarding the individuals within them, which satisfies privacy standards well. In the future, it would be beneficial for researchers to create more representative samples intentionally. 
+
+------------------------------------------------------------------------
+
+# Data Wrangling {#sec-wrangling}
+
+## Clean the "Music.Effects" Column
+
+The "Music.effects" column contains some inconsistent capitalization and a small number of missing values. We standardized the "Music.effects" column to consistent title case capitalization and convert it to a factor with three levels (Improve, No effect, Worsen), then drop the small number of rows where this value is missing to avoid issues in later visualizations.
+
+```{r}
+clean_combined <- combined |>
+  mutate(`Music.effects` = na_if(str_trim(`Music.effects`), "")) |>
+  mutate(`Music.effects` = str_to_title(`Music.effects`)) |>
+  mutate(`Music.effects` = factor(`Music.effects`,
+                                   levels = c("Improve", "No Effect", "Worsen"))) |>
+  filter(!is.na(`Music.effects`))
+
+clean_combined |>
+  count(`Music.effects`)
+```
+
+We cleaned this column because it will be useful as a grouping variable in our analysis. It will help us compare anxiety scores between people who say music improves, worsens, or has no effect on their mental health.
+
+## Create a New Categorical Column — "valence_category"
+
+We created a new binary categorical variable, called "valence_category," based on whether the participants' favorite genre has an above or below median, mean valence score in the Spotify data. This allows us to group survey participants by whether they prefer "musically positive" vs. "musically negative" genres.
+
+```{r}
+median_valence <- median(clean_combined$mean_valence, na.rm = TRUE)
+
+clean_combined <- clean_combined |>
+  mutate(valence_category = case_when(
+    mean_valence >= median_valence ~ "High Valence Genre",
+    mean_valence <  median_valence ~ "Low Valence Genre",
+    TRUE ~ NA_character_
+  )) |>
+  mutate(valence_category = factor(valence_category,
+                                    levels = c("Low Valence Genre",
+                                               "High Valence Genre")))
+
+clean_combined |>
+  count(valence_category)
+```
+
+This new column is useful because it reduces the complexity of 16 genre categories into a meaningful acoustic metric that evaluates the "positiveness" of music.
+
+## Genre-Level Summary Dataframe
+
+We created a summary dataframe showing, for each favorite genre, the mean anxiety score, mean depression score, and mean audio features across all respondents. This will be the basis for our genre-comparison analysis.
+
+```{r, fig.width=8, fig.height=5}
+genre_summary <- clean_combined |>
+  filter(!is.na(mean_valence)) |>
+  group_by(`Fav.genre`, genre_key) |>
+  summarise(
+    n_respondents    = n(),
+    mean_anxiety     = mean(Anxiety,    na.rm = TRUE),
+    mean_depression  = mean(Depression, na.rm = TRUE),
+    mean_insomnia    = mean(Insomnia,   na.rm = TRUE),
+    mean_valence     = first(mean_valence),
+    mean_energy      = first(mean_energy),
+    mean_tempo       = first(mean_tempo),
+    mean_acousticness = first(mean_acousticness),
+    .groups = "drop"
+  ) |>
+  arrange(desc(mean_anxiety))
+
+genre_summary
+```
+
+This summary dataframe is very important in order for us to answer our research question because it lets us compare genres by both their sound qualities and the mental health characteristics of their listeners.
+
+## Visual — Anxiety by Valence Category
+
+We created a visualization to understand whether respondents who prefer higher valence genres report lower anxiety scores. This directly addresses one component of our research question.
+
+```{r, fig.width=9, fig.height=5}
+genre_summary |>
+  filter(n_respondents >= 10) |>
+  mutate(Fav.genre = fct_reorder(Fav.genre, mean_anxiety)) |>
+  ggplot(aes(x = Fav.genre, y = mean_anxiety, fill = mean_energy)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_gradient(low = "lightblue", high = "red", name = "Mean Energy") +
+  labs(
+    title = "Mean Anxiety Score vs. Favorite Genre",
+    x = NULL,
+    y = "Mean Anxiety (0-10)"
+  ) 
+```
+
+Classical has the lowest mean anxiety score and also the lowest energy, while Folk and K-pop have the highest anxiety scores despite having high energy. But Metal, which has the highest energy, does not have the highest anxiety score, sitting in the middle. This could mean there is some relationship between lower genre energy and lower anxiety, with Classical being the clearest example, but the pattern is not consistent across all genres, so no concrete conclusions can be made from this data.
+
+------------------------------------------------------------------------
+
+# Group Information {#sec-group}
+
+## About Our Project
+
+Our group is investigating how music listening habits and genre preferences relate to self-reported anxiety and stress levels, and whether the acoustic properties of genres (such as energy and valence) help explain these differences. We are enrolled in Section BE, and our TA is Runa He.
+
+## Team Members
+
+::::: columns
+::: {.column width="50%"}
+### Saket Marina
+
+**Saket Marina** (Informatics, University of Washington; smarina1\@uw.edu) is interested in how acoustic properties of music may provide insight into evidence-based therapeutic applications. He enjoys building data pipelines and visualizations and is interested in careers in business intelligence or machine learning.
+:::
+
+::: {.column width="50%"}
+### Bella Schmidt
+
+**Bella Schmidt** (Informatics, University of Washington; ischmi\@uw.edu) is interested in understanding the intersection of mental health data and music consumption patterns. She is passionate about using data to uncover patterns in human behavior and is considering a career in UX research or data analytics.
+:::
+:::::
+
+:::: columns
+::: {.column width="50%"}
+### Meher Madan
+
+**Meher Madan** (Informatics, University of Washington; mmadan3\@uw.edu) is interested in how data visualization can make mental health research more accessible. She is interested in pursuing a career in data science and hopes to apply analytical skills to real-world health and social issues.
+:::
+::::
+
+## Coding Notes
+
+Tools used in this Deliverable:
+
+-   **Quarto multi-column layouts**: The `{.columns}` and `{.column width="X%"}` syntax for side-by-side content in Quarto was learned from the Quarto documentation at <https://quarto.org/docs/presentations/revealjs/>.
+-   **Custom CSS styling**: A separate `styles.css` file was used to customize code block and output appearance. We learned this approach from the Quarto documentation at <https://quarto.org/docs/output-formats/html-basics.html#css-styles>.
