@@ -1,0 +1,349 @@
+---
+title: "Music Therapy & Mental Health"
+author: "Saket Marina, Meher Madan, Bella Schmidt"
+date: today
+format:
+  dashboard:
+    theme: quartz
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+  echo: true
+editor: visual
+---
+<style>
+.navbar-author {
+  text-align: left !important;
+  width: 100% !important;
+}
+</style>
+---
+
+```{r, include=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(plotly)
+```
+
+```{r, include=FALSE}
+dataset1 <- read.csv("mxmh_survey_results.csv")
+dataset2 <- read.csv("SpotifyGenreDataset.csv")
+
+clean_dataset1 <- dataset1 |>
+  filter(!is.na(`Fav.genre`)) |>
+  mutate(genre_key = `Fav.genre` |>
+           tolower() |>
+           str_replace_all(" ", "-") |>
+           str_replace_all("&", "n") |>
+           recode(
+             "hip-hop"          = "hip-hop",
+             "k-pop"            = "k-pop",
+             "r-n-b"            = "r-n-b",
+             "rap"              = "hip-hop",
+             "edm"              = "edm",
+             "folk"             = "folk",
+             "gospel"           = "gospel",
+             "latin"            = "latin",
+             "lofi"             = "lo-fi",
+             "metal"            = "metal",
+             "pop"              = "pop",
+             "r&b"              = "r-n-b",
+             "rock"             = "rock",
+             "classical"        = "classical",
+             "country"          = "country",
+             "jazz"             = "jazz",
+             "video-game-music" = "video-game-music"
+           ))
+
+clean_dataset2 <- dataset2 |>
+  group_by(track_genre) |>
+  summarise(
+    n_tracks              = n(),
+    mean_danceability     = mean(danceability,      na.rm = TRUE),
+    mean_energy           = mean(energy,            na.rm = TRUE),
+    mean_valence          = mean(valence,           na.rm = TRUE),
+    mean_tempo            = mean(tempo,             na.rm = TRUE),
+    mean_acousticness     = mean(acousticness,      na.rm = TRUE),
+    mean_instrumentalness = mean(instrumentalness,  na.rm = TRUE),
+    mean_speechiness      = mean(speechiness,       na.rm = TRUE),
+    mean_loudness         = mean(loudness,          na.rm = TRUE),
+    mean_popularity       = mean(popularity,        na.rm = TRUE),
+    .groups = "drop"
+  )
+
+combined <- clean_dataset1 |>
+  left_join(clean_dataset2, by = c("genre_key" = "track_genre"))
+
+clean_combined <- combined |>
+  mutate(`Music.effects` = na_if(str_trim(`Music.effects`), "")) |>
+  mutate(`Music.effects` = str_to_title(`Music.effects`)) |>
+  mutate(`Music.effects` = factor(`Music.effects`,
+                                   levels = c("Improve", "No Effect", "Worsen"))) |>
+  filter(!is.na(`Music.effects`))
+
+median_valence <- median(clean_combined$mean_valence, na.rm = TRUE)
+
+clean_combined <- clean_combined |>
+  mutate(valence_category = case_when(
+    mean_valence >= median_valence ~ "High Valence Genre",
+    mean_valence <  median_valence ~ "Low Valence Genre",
+    TRUE ~ NA_character_
+  )) |>
+  mutate(valence_category = factor(valence_category,
+                                    levels = c("Low Valence Genre",
+                                               "High Valence Genre")))
+
+genre_summary <- clean_combined |>
+  filter(!is.na(mean_valence)) |>
+  group_by(`Fav.genre`, genre_key) |>
+  summarise(
+    n_respondents     = n(),
+    mean_anxiety      = mean(Anxiety,    na.rm = TRUE),
+    mean_depression   = mean(Depression, na.rm = TRUE),
+    mean_insomnia     = mean(Insomnia,   na.rm = TRUE),
+    mean_valence      = first(mean_valence),
+    mean_energy       = first(mean_energy),
+    mean_tempo        = first(mean_tempo),
+    mean_acousticness = first(mean_acousticness),
+    .groups = "drop"
+  ) |>
+  arrange(desc(mean_anxiety))
+```
+
+# Introduction {scrolling="true"}
+
+## Row {height="35%"}
+
+### Column {width="65%"}
+
+::: {.card title="Project Overview"}
+Each day, millions of people listen to music while studying, working, exercising, or relaxing. The psychological effects of different types of music have yet to be understood. By studying the correlation of music genre preferences and audio features to anxiety and depression, this analysis will help to further explore the effects of different types of music on the health of the listener.
+
+Our three big-picture questions guiding this analysis are:
+
+**1. Does the emotional "positiveness" (valence) of a listener's favorite genre correlate with lower self-reported anxiety levels?**
+
+**2. How do listening habits, such as hours per day and whether one listens while working, relate to mental health outcomes like anxiety and depression?**
+
+**3. Do people who report that music *improves* their mental health differ in genre preference or audio feature exposure compared to those who say it has no effect or worsens their mental health?**
+
+Music psychology researchers have proposed the idea that music elements such as tempo, harmony, and lyrics have the ability to influence an individual’s mood, stress levels, and cognitive concentration. Research has indicated that music has the ability to influence an individual’s emotional and physiological responses. For instance, according to a study published by Harvard Health Publishing, researchers have indicated that music has the ability to reduce stress levels and anxiety among people by triggering the body’s relaxation response, thus reducing the levels of the stress hormone cortisol. Additionally, music has the ability to activate the brain’s reward system, thus influencing an individual’s mood. This indicates that people have the ability to utilize music to improve their moods. To read more, click here. [Music as medicine (Harvard Health Publishing)](https://www.health.harvard.edu/mind-and-mood/music-as-medicine?utm_source=chatgpt.com). 
+
+One limitation is that the data is based on self-reported data, so the data collected about anxiety or depression could be based on the individual's own experiences and not necessarily verified. Additionally, the data collected could be biased towards individuals who use the site Reddit or Discord, as that was the method used to obtain the data. Therefore, the data collected could be biased towards the younger generation who are more tech-savvy. Also, the data collected only shows correlation and not causation, so we cannot say for certain that music directly correlates with mental health.
+:::
+
+### Column {width="35%"}
+
+::: {.card title="About the Data"}
+**Dataset 1 — MxMH Survey** [Kaggle: Music & Mental Health Survey](https://www.kaggle.com/datasets/catherinerasgaitis/mxmh-survey-results) `r nrow(dataset1)` respondents · 33 variables · Collected 2022
+
+**Dataset 2 — Spotify Tracks** [Hugging Face: Spotify Tracks Dataset](https://huggingface.co/datasets/maharshipandya/spotify-tracks-dataset) \~114,000 tracks · 125 genres · Collected 2023
+
+**Join Key:** Respondent favorite genre → Spotify genre (left join, genre-level audio averages)
+
+**Combined dataset:** `r nrow(clean_combined)` rows · `r ncol(clean_combined)` columns
+
+![](https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop)
+:::
+
+## Row {height="65%"}
+
+### Column {width="50%"}
+
+::: {.card title="Data Context — MxMH Survey"}
+The [Music & Mental Health Survey (MxMH)](https://www.kaggle.com/datasets/catherinerasgaitis/mxmh-survey-results) was created by Catherine Rasgaitis, an independent researcher and data aficionado. The data collection occurred through online communities in 2022. It has `r nrow(dataset1)` rows and `r ncol(dataset1)` columns, with each row referring to a distinct survey participant. The participants were asked to identify their favorite music genre from 16 possible options, the amount of time they spend listening to music daily, their streaming platform of choice, if they play an instrument, and the number of times they listen to each of the 16 music genres. The mental health metrics for anxiety, depression, insomnia, and OCD were rated from 0 to 10. One of the significant advantages is the complete anonymity of the data, which is collected for the sole purpose of research.
+:::
+
+### Column {width="50%"}
+
+::: {.card title="Data Context — Spotify Tracks Dataset"}
+The [Spotify Tracks Dataset](https://huggingface.co/datasets/maharshipandya/spotify-tracks-dataset) was created by **Maharshi Pandya** in 2023 by leveraging the [Spotify Web API](https://developer.spotify.com/documentation/web-api). The dataset has around 114,000 tracks across \~125 genres, with each entry in the dataset corresponding to a unique song. The audio features of songs, including danceability, energy, valence, tempo, acousticness, instrumentalness, and speechiness, have been calculated by Spotify's own algorithms and lie between 0 and 1 or BPM scales. The dataset is quite broad in terms of geography but is also Western-centric in its genre classification schema, which is provided by Spotify. For this analysis, we have aggregated all songs across genres to compute average audio features for each genre, thus reducing the 114,000-row dataset to one row per genre. This is actually beneficial for analysis but also eliminates information that could be relevant for individual users.
+:::
+
+# Q1: Valence & Anxiety {scrolling="true"}
+
+## Row {height="15%"}
+
+::: {.card title="Research Question 1"}
+**Does the emotional "positiveness" (valence) of a listener's favorite genre correlate with lower self-reported anxiety levels?**
+
+Valence is a Spotify audio feature ranging from 0 to 1 that measures the level of musical positivity or happiness of a given genre. We hypothesize that users who rate genres with high valence have lower anxiety levels, either because the music is more relaxing or because people with low anxiety are more likely to enjoy more upbeat music. The following visualizations examine the relationship between valence and anxiety using the combined data set.
+:::
+
+## Row {height="45%"}
+
+### Column {width="55%"}
+
+::: {.card title="Mean Anxiety Score by Genre (colored by Mean Energy)"}
+```{r, fig.width=9, fig.height=5}
+genre_summary |>
+  filter(n_respondents >= 10) |>
+  mutate(Fav.genre = fct_reorder(`Fav.genre`, mean_anxiety)) |>
+  ggplot(aes(x = Fav.genre, y = mean_anxiety, fill = mean_valence)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_gradient(low = "lightblue", high = "red", name = "Mean Valence") +
+  labs(
+    title = "Mean Anxiety Score by Favorite Genre",
+    subtitle = "Genres with ≥10 respondents; fill = mean Spotify valence score",
+    x = NULL,
+    y = "Mean Anxiety Score (0–10)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+```
+
+Classical music, with the lowest average anxiety, also corresponds to the lowest average valence. Thus, music listeners of this genre seem to prefer music with lower average valence, yet experience lower levels of anxiety. Folk and K-pop music, with the highest average anxiety, also hold one of the highest average valence values. Metal music, with one of the lowest average valence values, occupies a middle position in average anxiety. Thus, average valence does not seem to affect average anxiety, and other acoustic features, like energy and acousticness, may also play a role.
+:::
+
+### Column {width="60%"}
+
+::: {.card title="Valence vs. Mean Anxiety (Genre-Level Scatterplot)"}
+```{r, fig.width=8, fig.height=4.5}
+genre_data <- genre_summary |>
+  filter(n_respondents >= 10)
+
+fit <- lm(mean_anxiety ~ mean_valence, data = genre_data)
+genre_data$trend <- predict(fit, genre_data)
+
+plot_ly(genre_data, x = ~mean_valence, y = ~mean_anxiety,
+        mode = 'markers+text',
+        text = ~`Fav.genre`,
+        textposition = 'top center',
+        marker = list(size = 10, color = 'steelblue', opacity = 0.8),
+        textfont = list(size = 10, color = 'gray30'),
+        hovertemplate = paste0('<b>%{text}</b><br>',
+                               'Valence: %{x:.3f}<br>',
+                               'Mean Anxiety: %{y:.2f}<br>',
+                               'Respondents: ', genre_data$n_respondents,
+                               '<extra></extra>')) |>
+  add_trace(x = ~mean_valence, y = ~trend,
+            mode = 'lines',
+            name = 'Trend Line',
+            line = list(color = 'black', width = 2),
+            hoverinfo = 'none',
+            showlegend = TRUE) |>
+  layout(
+    title = 'Genre Valence vs. Mean Anxiety Score',
+    xaxis = list(title = 'Mean Genre Valence (0–1, higher = more positive)'),
+    yaxis = list(title = 'Mean Anxiety Score (0–10)'),
+    hovermode = 'closest',
+    paper_bgcolor = 'white',
+    font = list(size = 12)
+  )
+
+```
+
+The weighted trend line indicates that average valence slightly correlates with average anxiety. Genres with higher average valence values are associated with lower average anxiety. However, classical music, with both lower average valence and average anxiety, does not follow this rule, and acoustic features like lower energy and higher acousticness may also play a role.
+:::
+
+# Q2: Listening Habits & Mental Health {scrolling="true"}
+
+## Row {height="15%"}
+
+::: {.card title="Research Question 2"}
+**How do listening habits, such as hours per day and whether one listens while working, relate to mental health outcomes like anxiety and depression?**
+
+Understanding the "how" of music listening might be important. Listening while working might be a habitual use as a coping mechanism, whereas high levels of listening might be a form of avoidance and social withdrawal. We use the combined dataset to investigate whether these behavioral patterns are linked to worse or better mental health.
+:::
+
+## Row {height="45%"}
+
+### Column {width="55%"}
+
+::: {.card title="Daily Listening Hours vs. Anxiety and Depression"}
+```{r, fig.width=9, fig.height=5}
+clean_combined |>
+  filter(Hours.per.day <= 16) |>
+  mutate(hours_bucket = cut(Hours.per.day, breaks = c(0, 2, 4, 6, 8, 16),
+                             labels = c("0-2", "2-4", "4-6", "6-8", "8+"))) |>
+  filter(!is.na(hours_bucket)) |>
+  group_by(hours_bucket) |>
+  summarise(mean_anxiety = mean(Anxiety, na.rm = TRUE)) |>
+  ggplot(aes(x = hours_bucket, y = mean_anxiety, fill = mean_anxiety)) +
+  geom_col() +
+  scale_fill_gradient(low = "lightblue", high = "red") +
+  labs(
+    title = "Mean Anxiety Score by Daily Listening Hours",
+    x = "Hours Listening Per Day",
+    y = "Mean Anxiety Score (0–10)",
+    fill = "Mean Anxiety Score"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The respondents who listen to 2-4 hours of music daily have the highest mean anxiety score, whereas the respondents at the extremes with very low and very high hours of music listening, i.e., 0-2 hours and 8+ hours, respectively, show greater variability. The respondents with 8+ hours have the highest mean anxiety score. Instead of the amount of music being inversely related to anxiety, the data show that people with higher anxiety levels may seek music as a coping mechanism, rather than the amount of music being the determinant of anxiety levels, which is a drawback of the survey data.
+:::
+
+# Q3: Music Effects & Genre {scrolling="true"}
+
+## Row {height="15%"}
+
+::: {.card title="Research Question 3"}
+**Do people who report that music improves their mental health differ in genre preference or audio feature exposure compared to those who say it has no effect or worsens their wellbeing?**
+
+The MxMH survey directly asks the user if they think music makes their mental health better, has no impact, or makes their mental health worse. This is a chance to see if the self-perceived data matches the patterns found in the genre and audio features.
+:::
+
+## Row {height="45%"}
+
+::: {.card title="Genre Preference by Perceived Music Effect"}
+```{r, fig.width=8, fig.height=5.5}
+clean_combined |>
+  filter(!is.na(`Music.effects`)) |>
+  ggplot(aes(x = `Music.effects`, y = Anxiety, fill = `Music.effects`)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("Improve"   = "#4daf4a",
+                                "No Effect" = "#984ea3",
+                                "Worsen"    = "#e41a1c"),
+                    guide = "none") +
+  labs(
+    title = "Anxiety Score by Perceived Music Effect",
+    x = "Perceived Effect of Music on Mental Health",
+    y = "Self-Reported Anxiety (0–10)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+Those in the Improve group actually tend to have a higher median anxiety level than the ones in the None group, which is likely due to reverse causation effects. Those experiencing higher anxiety levels are more likely to use music as a coping mechanism and report a positive correlation.
+
+Note: The Worsens group is small, so this data should be taken as uncertain.
+:::
+
+# Conclusion {scrolling="true"}
+
+## Row {height="30%"}
+
+::: {.card title="Major Takeaway 1: Genre Valence and Energy Show Inconsistent Links to Anxiety"}
+Our first big-picture question was whether listeners of more positive-sounding music (i.e., music with higher valence) report lower anxiety. The answer to this question is complex, as we can see from the weak negative trend in the genre-level scatter plot. However, one thing stands out as quite interesting: Classical music, which had both low valence and very low energy, had listeners with the lowest average anxiety of any genre with a decent sample size.
+:::
+
+## Row {height="35%"}
+
+### Column {width="50%"}
+
+::: {.card title="Major Takeaway 2: Listening Habits Show a Reverse Causality Pattern with Mental Health"}
+Our second big-picture question was whether listeners' music habits are related to their mental health outcomes. As we can see from the plot, listeners who report 2-4 hours of music per day have the highest average anxiety, and listeners who report more than 8 hours per day have the highest average anxiety of any group. Rather than more music being associated with lower anxiety, we see that more anxious individuals are most likely using music as a coping mechanism, which could show reverse causality in survey data.
+:::
+
+### Column {width="50%"}
+
+::: {.card title="Major Takeaway 3: Perceived Music Benefits Are Driven by Need, Not Genre"}
+Our third question was, "Do people who report that music has an improving effect on their mental health differ systematically from others?" The boxplot demonstrates that the Improve group actually has higher median anxiety levels than the No Effect group. This is most likely sampling bias, as people with mental health issues are more motivated to seek out music as a tool and attribute improvement to it.
+:::
+
+## Row {height="35%"}
+
+::: {.card title="Bias Assessment & Future Directions"}
+**Bias in the Data**
+
+This analysis is most likely overestimating the relationship between music listening and mental health issues in the general population. The MxMH survey is likely to have been accessed by people interested in the relationship between music and mental health, and the high percentage of people who responded with "music improves my mental health" (≈`r round(mean(clean_combined$Music.effects=="Improve",na.rm=TRUE)*100,0)`% of respondents) confirms this. The Spotify data, which aggregates the genre features across tens of thousands of songs, smooths over the enormous potential impact of variation within those genres for the individual listener. For example, someone who only ever listens to slow, acoustic classical music and someone who only ever listens to fast orchestral metal are both "classical" listeners, but the difference could have enormous impact for the individual.
+
+**Future Directions**
+
+There are several extensions that would greatly improve this analysis. The first is the addition of Spotify listening data at the individual track level, rather than the genre average. This would enable the creation of individual audio feature profiles for each respondent, which is a much more sensitive measure than using genre averages. Second, would be to create a study where the same respondents are surveyed over several different time points. This would be a way to mitigate the reverse causation problem. It would also allow us to analyze the lag from changes in listening habits to changes in mental health. Lastly, we could increase the demographic range of the MxMH study to include older adults and non-English-speaking populations. This would improve the generalizability of the results. 
+:::
